@@ -657,6 +657,7 @@ const topRow = topsOrder.map(src => {
               timerEl.textContent = formatMMSS(remaining);
               if (remaining <= 0) {
                 clearInterval(intId);
+                textarea.disabled = true;
                 btn.disabled = false;
                 timerEl.textContent = '00:00';
               }
@@ -961,7 +962,7 @@ const A_rt_sec = aTask ? (aTask.rt / 1000).toFixed(2) : '';
     
     // Redirect after a short delay
     setTimeout(() => {
-      window.location.href = qualticsURL;
+      window.location.href = qualtricsURL;
     }, 1000);
   },
   data: { phase: 'end' }
