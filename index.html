@@ -897,6 +897,14 @@ const fillerSummary = fillerTasks.map(task => ({
   wc: task.wordCount ?? countWords(task.text),
   rt_sec: (task.rt / 1000).toFixed(2)
 }));
+
+// Pull the F and A fluency scores into separate variables for Qualtrics.
+const fTask = fillerTasks.find(task => task.fillerLetter === 'F');
+const aTask = fillerTasks.find(task => task.fillerLetter === 'A');
+const F_word_count = fTask ? (fTask.wordCount ?? countWords(fTask.text)) : 0;
+const A_word_count = aTask ? (aTask.wordCount ?? countWords(aTask.text)) : 0;
+const F_rt_sec = fTask ? (fTask.rt / 1000).toFixed(2) : '';
+const A_rt_sec = aTask ? (aTask.rt / 1000).toFixed(2) : '';
     
     // Get attention check results
     const attentionChecks = allData.filter(trial => trial.phase === 'attention_check' || trial.phase === 'attention_check_neutral');
@@ -917,8 +925,8 @@ const fillerSummary = fillerTasks.map(task => ({
     };
     
     // Encode data for Qualtrics - pass as individual URL parameters
-    const qualtricsSurveyID = 'SV_8eIO9NfNa89mXnU';
-    const qualtricsDatacenter = 'iad1';
+    const qualtricsSurveyID = 'SV_9LlAiV46s0DUXxc';
+    const qualtricsBaseURL = 'https://merceruniversity.co1.qualtrics.com/jfe/form/';
     const prolificCompletionCode = getQueryParam('cc') || 'NO_CODE';
     const redirectURL = `https://app.prolific.co/submissions/complete?cc=${prolificCompletionCode}`;
 
@@ -933,7 +941,14 @@ const fillerSummary = fillerTasks.map(task => ({
     const overallAccuracyStr = encodeURIComponent(summaryData.overall_accuracy || '0');
     const redirectURLEncoded = encodeURIComponent(redirectURL);
 
-    const qualticsURL = `https://${qualtricsDatacenter}.qualtrics.com/jfe/form/${qualtricsSurveyID}?` +
+    const qualtricsURL = `${qualtricsBaseURL}${qualtricsSurveyID}?` +
+      `PROLIFIC_PID=${encodeURIComponent(prolificPID)}&` +
+      `PROLIFIC_STUDY_ID=${encodeURIComponent(studyID)}&` +
+      `PROLIFIC_SESSION_ID=${encodeURIComponent(sessionID)}&` +
+      `F_word_count=${encodeURIComponent(F_word_count)}&` +
+      `A_word_count=${encodeURIComponent(A_word_count)}&` +
+      `F_rt_sec=${encodeURIComponent(F_rt_sec)}&` +
+      `A_rt_sec=${encodeURIComponent(A_rt_sec)}&` +
       `item_report=${itemReportStr}&` +
       `filler_summary=${fillerSummaryStr}&` +
       `feedback_set1=${feedback_set1}&` +
@@ -942,8 +957,7 @@ const fillerSummary = fillerTasks.map(task => ({
       `feedback_set4=${feedback_set4}&` +
       `attention_checks_passed=${attentionChecksStr}&` +
       `overall_accuracy=${overallAccuracyStr}&` +
-      `redirect_url=${redirectURLEncoded}&` +
-      `PROLIFIC_PID=${prolificPID}`;
+      `redirect_url=${redirectURLEncoded}`;
     
     // Redirect after a short delay
     setTimeout(() => {
