@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>LFF Matching Task</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- jsPsych v7 (CDN) -->
+  <link rel="stylesheet" href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css">
+  <script src="https://unpkg.com/jspsych@7.3.4" defer></script>
+
+  <!-- Plugins (CDN) -->
+  <script src="https://unpkg.com/@jspsych/plugin-preload@1.1.3" defer></script>
+  <script src="https://unpkg.com/@jspsych/plugin-instructions@1.1.3" defer></script>
+  <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.3" defer></script>
+  <script src="https://unpkg.com/@jspsych/plugin-html-button-response@1.2.0" defer></script>
+
+  <!-- Stop favicon 404 noise -->
+  <link rel="icon" href="data:,">
+
+  <style>
+    :root {
+      --cell-w: 220px;
+      --cell-h: 180px;
+      --img-max-w: 200px;
+      --img-max-h: 160px;
+      --gap: 16px;
+      --ok: #2e7d32;
+      --bad: #c62828;
+      --row-min-width: calc(4 * var(--cell-w) + 3 * var(--gap));
+    }
+
+    body { background: #fff; margin: 0; }
+
+    .row-title { text-align: center; margin: 12px 0 6px; font-weight: 700; }
+    .hint { text-align: center; color: #444; margin: 6px 0 8px; font-size: 15px; }
+
+    /* Scroll container so rows stay 4-across and scroll on small screens */
+    .row-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 10px auto;
+      max-width: 100%;
+    }
+
+    /* TOP POOL: fixed total width for 4 items, no wrap */
+    #top-pool {
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: flex-start;
+      align-items: center;
+      gap: var(--gap);
+      min-width: var(--row-min-width);
+      margin: 0 auto;
+      padding: 0 4px;
+    }
+
+    /* DROP + BOTTOM GRIDS: fixed 4 columns */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, var(--cell-w));
+      gap: var(--gap);
+      align-items: start;
+      justify-content: center;
+      min-width: var(--row-min-width);
+      margin: 10px auto;
+      padding: 0 4px;
+    }
+
+    .top-card {
+      width: var(--cell-w);
+      min-height: var(--cell-h);
+      border: 2px solid #aaa;
+      border-radius: 10px;
+      background: #fff;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      position: relative;
+      user-select: none;
+    }
+    .top-card:active { cursor: grabbing; }
+    .top-card img {
+      max-width: var(--img-max-w);
+      max-height: var(--img-max-h);
+      object-fit: contain;
+      pointer-events: none;
+      display: block;
+    }
+
+    .drop-slot {
+      width: var(--cell-w);
+      height: var(--cell-h);
+      border: 2px dashed #999;
+      border-radius: 10px;
+      background: #f6f6ff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      color: #666;
+      font-size: 15px;
+      text-align: center;
+    }
+    .drop-slot.filled {
+      border-style: solid;
+      background: #eef7ff;
+      color: #222;
+    }
+    .drop-slot img {
+      max-width: var(--img-max-w);
+      max-height: var(--img-max-h);
+      object-fit: contain;
+      display: block;
+    }
+
+    .img-cell {
+      width: var(--cell-w);
+      min-height: var(--cell-h);
+      border: 1px dashed #ddd;
+      background: #fafafa;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      padding: 4px;
+    }
+    .img-cell img {
+      max-width: var(--img-max-w);
+      max-height: var(--img-max-h);
+      object-fit: contain;
+      display: block;
+    }
+
+    .ok-wrap { margin-top: 16px; text-align: center; }
+    button { padding: 10px 16px; font-size: 16px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .badge {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: #fff;
+      z-index: 2;
+    }
+    .badge.correct { background: var(--ok); }
+    .badge.incorrect { background: var(--bad); }
+    .outline-correct { outline: 4px solid var(--ok); outline-offset: 2px; }
+    .outline-incorrect { outline: 4px solid var(--bad); outline-offset: 2px; }
+
+    .timer { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+  </style>
+</head>
+<body>
+  <script>
+    window.addEventListener('error', (e) => {
+      const pre = document.createElement('pre');
+      pre.textContent = 'Error: ' + e.message;
+      pre.style.color = 'white';
+      pre.style.background = '#c0392b';
+      pre.style.padding = '12px';
+      pre.style.margin = 0;
+      pre.style.font = '14px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+      document.body.prepend(pre);
+      console.error('Global error:', e.message, e.filename, e.lineno, e.colno, e.error);
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const jsPsych = initJsPsych({ on_finish: () => {} });
+
+      function getQueryParam(name) {
+        const params = new URLSearchParams(window.location.search);
+        return params.get(name) || '';
+      }
+      function shuffle(arr) { return jsPsych.randomization.shuffle(arr); }
+      function imgHTML(src, extraClass = '') {
+        const cls = extraClass ? ` class="${extraClass}"` : '';
+        return `<img src="${src}" alt=""${cls}>`;
+      }
+
+      const SETS = [       
+        { setId: 'Set1',
+        instruction: 'Please match the farmer to the crop that they grow',
+        tops: ['img/Set1Top1.png','img/Set1Top2.png','img/Set1Top3.png','img/Set1Top4.png'],
+        bots: ['img/Set1Bot1.png','img/Set1Bot2.png','img/Set1Bot3.png','img/Set1Bot4.png']
+        },
+
+        { setId: 'Set2',
+         instruction: 'Please match the dog to their correct doghouse',
+          tops: ['img/Set2Top1.png','img/Set2Top2.png','img/Set2Top3.png','img/Set2Top4.png'],
+          bots: ['img/Set2Bot1.png','img/Set2Bot2.png','img/Set2Bot3.png','img/Set2Bot4.png']
+        },
+        { setId: 'Set3',
+         instruction: 'Please match the car to its garage',
+          tops: ['img/Set3Top1.png','img/Set3Top2.png','img/Set3Top3.png','img/Set3Top4.png'],
+          bots: ['img/Set3Bot1.png','img/Set3Bot2.png','img/Set3Bot3.png','img/Set3Bot4.png']
+        },
+        { setId: 'Set4',
+         instruction: 'Please match the child with their favorite food',
+          tops: ['img/Set4Top1.png','img/Set4Top2.png','img/Set4Top3.png','img/Set4Top4.png'],
+          bots: ['img/Set4Bot1.png','img/Set4Bot2.png','img/Set4Bot3.png','img/Set4Bot4.png']
+        }
+      ];
+      const preload_images = SETS.flatMap(s => [...s.tops, ...s.bots]);
+      const GroundTruthBySet = {};
+
+      // Store which tops are correct for each set (so retrieval uses the same ones)
+const CorrectTopsBySet = {};
+const ShuffledTopsBySet = {};
+  
+function deriveGroundTruth(topIds, shuffledBottomIds, selectionMap, forceCorrectTops = null) {
+  let correctTops, incorrectTops;
+  
+  if (forceCorrectTops) {
+    // Use the stored correct tops from encoding
+    correctTops = forceCorrectTops;
+    incorrectTops = topIds.filter(t => !correctTops.includes(t));
+  } else {
+    // First time: generate random correct/incorrect split
+    const topsShuffled = shuffle([...topIds]);
+    correctTops = topsShuffled.slice(0, 2);
+    incorrectTops = topsShuffled.slice(2);
+    
+    // DEBUG: Log which ones are correct
+    console.log(`Set correct tops: ${correctTops}, incorrect: ${incorrectTops}`);
+  }
+
+  const truth = {};
+  
+  // For CORRECT tops: use participant's selection
+  correctTops.forEach(tid => {
+    truth[tid] = selectionMap[tid];
+    console.log(`CORRECT: ${tid} -> ${selectionMap[tid]}`);
+  });
+
+  // For INCORRECT tops: swap them with each other
+  if (incorrectTops.length === 2) {
+    const chosen1 = selectionMap[incorrectTops[0]];
+    const chosen2 = selectionMap[incorrectTops[1]];
+    truth[incorrectTops[0]] = chosen2;
+    truth[incorrectTops[1]] = chosen1;
+    console.log(`INCORRECT (swapped): ${incorrectTops[0]} -> ${chosen2}, ${incorrectTops[1]} -> ${chosen1}`);
+  }
+
+  return { groundTruth: truth, correctTops, incorrectTops };
+}
+function MatchingEncodingTrial(set) {
+  const topIds = set.tops;
+  const bottomIds = set.bots;
+  let shuffledBottomIds = null;
+  let shuffledTopIds = null;
+
+  const encoding = {
+    type: jsPsychHtmlButtonResponse,
+    stimulus: () => {
+      if (!shuffledBottomIds) {
+        shuffledBottomIds = shuffle([...bottomIds]);
+      }
+      if (!shuffledTopIds) {
+        shuffledTopIds = shuffle([...topIds]);
+      }
+      
+      const topPool = shuffledTopIds.map(src => `
+        <div class="top-card" draggable="true" data-top="${src}">
+          ${imgHTML(src)}
+        </div>
+      `).join('');
+
+      const slots = shuffledBottomIds.map((_, i) => `
+        <div class="drop-slot" data-slot-index="${i}">Drop here</div>
+      `).join('');
+
+      const bottoms = shuffledBottomIds.map(src => `
+        <div class="img-cell">${imgHTML(src)}</div>
+      `).join('');
+
+      return `
+        <div>
+          <h3 class="row-title">Match Encoding — ${set.instruction}</h3>
+          <p class="hint">Drag each top image into one of the empty squares above the bottom images. When all four are placed, click OK.</p>
+          <div class="row-scroll"><div id="top-pool">${topPool}</div></div>
+          <div class="row-scroll"><div class="grid" id="drop-row">${slots}</div></div>
+          <div class="row-scroll"><div class="grid" id="bottom-row">${bottoms}</div></div>
+          <div class="ok-wrap"><button id="ok-encode" disabled>OK</button></div>
+        </div>
+      `;
+    },
+    choices: [],
+    response_ends_trial: false,
+    on_load: () => {
+      const topCards = Array.from(document.querySelectorAll('.top-card'));
+      const slots = Array.from(document.querySelectorAll('.drop-slot'));
+      const okBtn = document.getElementById('ok-encode');
+
+      const slotToTop = new Array(slots.length).fill(null);
+      const selectionMap = {};
+
+      function updateOK() {
+        okBtn.disabled = slotToTop.filter(x => x !== null).length !== slots.length;
+      }
+
+      topCards.forEach(card => {
+        card.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/topId', card.getAttribute('data-top'));
+        });
+      });
+
+      slots.forEach((slotEl, slotIndex) => {
+        slotEl.addEventListener('dragover', (e) => e.preventDefault());
+        slotEl.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const topId = e.dataTransfer.getData('text/topId');
+          if (!topId) return;
+
+          const prevSlotIndex = slotToTop.findIndex(t => t === topId);
+          if (prevSlotIndex >= 0) {
+            slotToTop[prevSlotIndex] = null;
+            const prevSlot = slots[prevSlotIndex];
+            prevSlot.classList.remove('filled');
+            prevSlot.textContent = 'Drop here';
+          }
+
+          if (slotToTop[slotIndex] !== null) {
+            slotToTop[slotIndex] = null;
+          }
+
+          slotToTop[slotIndex] = topId;
+          slotEl.classList.add('filled');
+          slotEl.innerHTML = `${imgHTML(topId)}`;
+
+          const bottomId = shuffledBottomIds[slotIndex];
+          selectionMap[topId] = bottomId;
+
+          updateOK();
+        });
+      });
+
+      okBtn.addEventListener('click', () => {
+  if (slotToTop.filter(x => x !== null).length !== slots.length) return;
+
+  const { groundTruth, correctTops, incorrectTops } = deriveGroundTruth(topIds, shuffledBottomIds, selectionMap);
+  
+  console.log('ENCODING: Storing for setId:', set.setId);
+  console.log('ENCODING: Ground truth:', groundTruth);
+  
+  CorrectTopsBySet[set.setId] = correctTops;
+  GroundTruthBySet[set.setId] = groundTruth;
+  
+  console.log('ENCODING: Stored. GroundTruthBySet now:', GroundTruthBySet);
+
+  const encodingMatches = topIds.map(topId => ({
+    top_image: topId,
+    bottom_image: selectionMap[topId],
+    is_correct: groundTruth[topId] === selectionMap[topId] ? 1 : 0
+  }));
+
+  const encodingSlotOrder = [...slotToTop];
+  ShuffledTopsBySet[set.setId] = shuffledTopIds;
+  
+  jsPsych.finishTrial({
+    setId: set.setId,
+    phase: 'encoding',
+    participantMapping: selectionMap,
+    assignedCorrectTopIds: correctTops,
+    assignedIncorrectTopIds: incorrectTops,
+    derivedGroundTruth: groundTruth,
+    encoding_matches: encodingMatches,
+    encodingBottomOrder: shuffledBottomIds,
+    encodingSlotOrder: encodingSlotOrder,
+    encodingTopOrder: shuffledTopIds
+  });
+    });
+
+  }   // ✅ ADD THIS LINE — closes on_load properly
+
+  };
+
+const encodingFeedback = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: () => {
+    const last = jsPsych.data.get().last(1).values()[0];
+    const selectionMap = last.participantMapping;
+    const groundTruth = last.derivedGroundTruth;
+    const encodingBottomOrder = last.encodingBottomOrder;
+    const encodingSlotOrder = last.encodingSlotOrder;
+
+    const topRow = encodingSlotOrder.map(topId => {
+      if (!topId) {
+        return `<div class="top-card" style="opacity:0;pointer-events:none;"></div>`;
+      }
+
+      const chosenBottom = selectionMap[topId];
+      const isCorrect = groundTruth[topId] === chosenBottom;
+      const cls = isCorrect ? 'outline-correct' : 'outline-incorrect';
+      const badge = isCorrect
+        ? '<div class="badge correct">✓</div>'
+        : '<div class="badge incorrect">✗</div>';
+
+      return `
+        <div class="top-card ${cls}">
+          ${badge}
+          ${imgHTML(topId)}
+        </div>
+      `;
+    }).join('');
+
+    const bottoms = encodingBottomOrder.map(src => `
+      <div class="img-cell">${imgHTML(src)}</div>
+    `).join('');
+
+    return `
+      <div>
+        <h3 class="row-title">Feedback — ${set.instruction}</h3>
+        <p class="hint">Green ✓ = correct, Red ✗ = incorrect</p>
+        <div class="row-scroll"><div id="top-pool">${topRow}</div></div>
+        <div class="row-scroll"><div class="grid">${bottoms}</div></div>
+      </div>
+    `;
+  },
+
+  choices: ['OK'],
+
+  data: {
+    setId: set.setId,
+    phase: 'encoding_feedback'
+  },
+
+  on_finish: (data) => {
+    data.feedback_rt_ms = data.rt;
+  }
+};
+
+  return [encoding, encodingFeedback];
+}
+            
+function MatchingRetrievalTrial(set) {
+  const shuffledTops = shuffle([...set.tops]);
+  const shuffledBots = shuffle([...set.bots]);
+
+  const retrieval = {
+    type: jsPsychHtmlButtonResponse,
+    stimulus: () => {
+      const topPool = shuffledTops.map(src => `
+        <div class="top-card" draggable="true" data-top="${src}">
+          ${imgHTML(src)}
+        </div>
+      `).join('');
+
+      const slots = shuffledBots.map((_, i) => `
+        <div class="drop-slot" data-slot-index="${i}">Drop here</div>
+      `).join('');
+
+      const bottoms = shuffledBots.map(src => `
+        <div class="img-cell">${imgHTML(src)}</div>
+      `).join('');
+
+      return `
+        <div>
+          <h3 class="row-title">Retrieval — ${set.instruction}</h3>
+          <p class="hint">Drag each top image into one of the empty squares above the bottom images. When all four are placed, click OK.</p>
+          <div class="row-scroll"><div id="top-pool">${topPool}</div></div>
+          <div class="row-scroll"><div class="grid" id="drop-row">${slots}</div></div>
+          <div class="row-scroll"><div class="grid" id="bottom-row">${bottoms}</div></div>
+          <div class="ok-wrap"><button id="ok-retr" disabled>OK</button></div>
+        </div>
+      `;
+    },
+    choices: [],
+    response_ends_trial: false,
+    on_load: () => {
+      console.log('=== RETRIEVAL on_load starting for', set.setId);
+      console.log('GroundTruthBySet keys:', Object.keys(GroundTruthBySet));
+      console.log('GroundTruthBySet contents:', GroundTruthBySet);
+      
+      // Fetch ground truth NOW (when trial runs, not when created)
+      let groundTruth = GroundTruthBySet[set.setId];
+      console.log('Retrieved groundTruth from global:', groundTruth);
+      
+      if (!groundTruth) {
+        console.log('Ground truth not found in global, checking data...');
+        const enc = jsPsych.data.get().filter({ setId: set.setId, phase: 'encoding' }).last(1).values()[0];
+        console.log('Found encoding trial:', enc);
+        if (enc && enc.derivedGroundTruth) {
+          groundTruth = enc.derivedGroundTruth;
+          GroundTruthBySet[set.setId] = groundTruth;
+          console.log('Set groundTruth from encoding data');
+        }
+      }
+
+      console.log('FINAL groundTruth:', groundTruth);
+
+      const topCards = Array.from(document.querySelectorAll('.top-card'));
+      const slots = Array.from(document.querySelectorAll('.drop-slot'));
+      const okBtn = document.getElementById('ok-retr');
+
+      const slotToTop = new Array(slots.length).fill(null);
+      const selectionMap = {};
+
+      function updateOK() { okBtn.disabled = slotToTop.filter(x => x !== null).length !== slots.length; }
+
+      topCards.forEach(card => {
+        card.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/topId', card.getAttribute('data-top'));
+        });
+      });
+
+      slots.forEach((slotEl, slotIndex) => {
+        slotEl.addEventListener('dragover', (e) => e.preventDefault());
+        slotEl.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const topId = e.dataTransfer.getData('text/topId');
+          if (!topId) return;
+
+          const prevSlotIndex = slotToTop.findIndex(t => t === topId);
+          if (prevSlotIndex >= 0) {
+            slotToTop[prevSlotIndex] = null;
+            const prevSlot = slots[prevSlotIndex];
+            prevSlot.classList.remove('filled');
+            prevSlot.textContent = 'Drop here';
+          }
+
+          if (slotToTop[slotIndex] !== null) {
+            slotToTop[slotIndex] = null;
+          }
+
+          slotToTop[slotIndex] = topId;
+          slotEl.classList.add('filled');
+          slotEl.innerHTML = `${imgHTML(topId)}`;
+
+          const bottomId = shuffledBots[slotIndex];
+          selectionMap[topId] = bottomId;
+
+          updateOK();
+        });
+      });
+
+      okBtn.addEventListener('click', () => {
+        if (slotToTop.filter(x => x !== null).length !== slots.length) return;
+
+        console.log('Finishing retrieval with groundTruth:', groundTruth);
+
+        jsPsych.finishTrial({
+          setId: set.setId,
+          phase: 'retrieval',
+          participantMapping: selectionMap,
+          groundTruthUsed: groundTruth,
+          slotToTop,
+          shuffledBots,
+          shuffledTops
+        });
+      });
+    }
+  };
+
+  const retrievalFeedback = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: () => {
+    const last = jsPsych.data.get().last(1).values()[0];
+    const slotToTop = last.slotToTop || [];
+    const botsOrder = last.shuffledBots;
+    const topsOrder = last.shuffledTops;
+    const gt = last.groundTruthUsed;
+    const participantMapping = last.participantMapping;
+
+    console.log('Feedback: gt =', gt);
+    console.log('Feedback: participantMapping =', participantMapping);
+
+const topRow = topsOrder.map(src => {
+  return `
+    <div class="top-card">
+      ${imgHTML(src)}
+    </div>
+  `;
+}).join('');
+
+    const markedSlots = botsOrder.map((botId, i) => {
+      const topId = slotToTop[i];
+      if (!topId) {
+        return `<div class="drop-slot">Empty</div>`;
+      }
+      
+      const expectedBottom = gt[topId];
+      const correct = expectedBottom === botId;
+      
+      const cls = correct ? 'outline-correct' : 'outline-incorrect';
+      const badge = correct ? '<div class="badge correct">✓</div>' : '<div class="badge incorrect">✗</div>';
+      return `
+        <div class="drop-slot filled ${cls}" style="position:relative;">
+          ${badge}
+          ${imgHTML(topId)}
+        </div>
+      `;
+    }).join('');
+
+    const bottoms = botsOrder.map(src => `
+      <div class="img-cell">${imgHTML(src)}</div>
+    `).join('');
+
+    return `
+      <div>
+        <h3 class="row-title">Retrieval Feedback — ${set.instruction}</h3>
+        <p class="hint">Your answers are shown in the same positions you placed them. ✓ = correct, ✗ = incorrect.</p>
+        <div class="row-scroll"><div id="top-pool">${topRow}</div></div>
+        <div class="row-scroll"><div class="grid">${markedSlots}</div></div>
+        <div class="row-scroll"><div class="grid">${bottoms}</div></div>
+      </div>
+    `;
+  },
+  choices: ['OK'],
+  data: { setId: set.setId, phase: 'retrieval_feedback' }
+};
+
+  return [retrieval, retrievalFeedback];
+}
+   
+      function FillerWritingTask(letter, tag) {
+        return {
+          type: jsPsychHtmlButtonResponse,
+          stimulus: `
+            <div>
+              <h3 class="row-title">Word Generation Task</h3>
+              <p style="text-align:center; max-width:900px; margin: 0 auto 10px;">
+                You will have <strong>one minute</strong> to type as many different words as possible that start with the letter <strong>${letter}</strong>.
+              </p>
+              <p style="text-align:center; max-width:900px; margin: 0 auto 10px;">
+                Separate your words with spaces or commas. Please do not use names of people or places.
+              </p>
+              <div style="display:flex; justify-content:center;">
+                <textarea id="filler-text" rows="10" style="width:100%; max-width:900px;"></textarea>
+              </div>
+              <p class="hint">The timer starts when this page appears. You can submit when the timer reaches <span class="timer" id="timer">01:00</span>.</p>
+              <div class="ok-wrap"><button id="submit-filler" disabled>Submit</button></div>
+            </div>
+          `,
+          choices: [],
+          response_ends_trial: false,
+          on_load: () => {
+            const btn = document.getElementById('submit-filler');
+            const timerEl = document.getElementById('timer');
+            const textarea = document.getElementById('filler-text');
+
+            let remaining = 60;
+            timerEl.textContent = formatMMSS(remaining);
+            const intId = setInterval(() => {
+              remaining -= 1;
+              timerEl.textContent = formatMMSS(remaining);
+              if (remaining <= 0) {
+                clearInterval(intId);
+                textarea.disabled = true;
+                btn.disabled = false;
+                timerEl.textContent = '00:00';
+              }
+            }, 1000);
+
+            btn.addEventListener('click', () => {
+              jsPsych.finishTrial({
+                phase: 'filler',
+                fillerTag: tag,
+                fillerLetter: letter,
+                text: textarea.value,
+                wordCount: countWords(textarea.value)
+              });
+            });
+
+            function formatMMSS(sec) {
+              const m = Math.floor(sec / 60); const s = sec % 60;
+              return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            }
+          }
+        };
+      }
+
+      const welcomeInstructions = {
+        type: jsPsychInstructions,
+        pages: [
+          `<div style="max-width:900px;margin:0 auto;text-align:left">
+            <h2>Instructions</h2>
+            <p>In this task you will see a row of stimuli at the top of the screen. Your job is to correctly pair these items with items at the bottom of the screen. You can do this by dragging that item to the square above the item you think it is matched with.</p>
+            <p>After you have matched all of the stimuli you will receive feedback about which items you matched correctly and which ones you did not. You should remember which pairs are correct and which ones are incorrect for a future matching test with these same items.</p>
+          </div>`
+        ],
+        show_clickable_nav: true,
+        button_label_next: 'Continue'
+      };
+
+      const readyToBegin = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+          <div style="text-align:center">
+            <p>Are you ready to begin?</p>
+            <p><strong>Press the space bar</strong> to start the first trial.</p>
+          </div>
+          `,
+        choices: [' '],
+        data: { phase: 'ready_to_begin' }
+      };
+      
+      const attentionCheckNeutral = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: `
+          <div style="max-width:800px; margin:0 auto; text-align:center;">
+          <p>Please select <strong>Neither Agree nor Disagree</strong> for this question.</p>
+          </div>
+        `,
+        choices: [
+          'Strongly Disagree',           // 0
+          'Disagree',                    // 1
+          'Neither Agree nor Disagree',  // 2 ✅ correct
+          'Agree',                       // 3
+          'Strongly Agree'               // 4
+        ],
+        data: { phase: 'attention_check_neutral' },
+        on_finish: (data) => {
+        data.attention_response = data.response;
+        data.attention_correct = data.response === 2 ? 1 : 0;
+    }
+  };
+      const attentionCheck = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: `
+          <div style="max-width:800px; margin:0 auto; text-align:center;">
+            <p>Please select <strong>Strongly Disagree</strong> for this question.</p>
+            <p style="margin-top:20px;">
+            </p>
+          </div>
+        `,
+        choices: [
+          'Strongly Disagree',
+          'Disagree',
+          'Neither Agree nor Disagree',
+          'Agree',
+          'Strongly Agree'
+        ],
+        data: { phase: 'attention_check' },
+        on_finish: (data) => {
+          data.attention_response = data.response;
+          data.attention_correct = data.response === 0 ? 1 : 0;
+        }
+      };
+      
+      const beforeSecondEncodingInstructions = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+          <div style="text-align:center; max-width:800px; margin:0 auto;">
+            <p>Thanks! We are now going to show you two other sets that you will once again match.</p>
+            <p>As before, after you have matched all of the stimuli you will receive feedback. You should remember which pairs are correct and which ones are incorrect for a future matching test with these same items.</p>
+            <p><strong>Press the space bar</strong> to continue.</p>
+          </div>
+  `,
+  choices: [' '],
+  data: { phase: 'transition_before_second_encoding' }
+};
+      const shortBreakAfterHalf1 = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+          <div style="text-align:center">
+            <p>Now we are going to take a short break and do something a little different.</p>
+            <p><strong>Press space bar</strong> to continue.</p>
+          </div>
+        `,
+        choices: [' '],
+        data: { phase: 'short_break_after_half1' }
+      };
+
+      const timeline = [];
+
+      timeline.push({
+        type: jsPsychPreload,
+        images: preload_images,
+        message: 'Loading images, please wait...',
+        error_message: 'Some images failed to load. Please check filenames and paths.'
+      });
+
+      timeline.push(welcomeInstructions);
+      timeline.push(readyToBegin);
+      timeline.push(attentionCheck);
+
+      // Version 2: switch the two halves of the experiment.
+      // The third/fourth sets are presented first, and the first/second sets are presented second.
+      const half1 = shuffle([SETS[2], SETS[3]]);
+      const half2 = shuffle([SETS[0], SETS[1]]);
+
+      timeline.push(...MatchingEncodingTrial(half1[0]));
+      timeline.push(...MatchingEncodingTrial(half1[1]));
+
+      timeline.push(shortBreakAfterHalf1);
+
+      timeline.push(FillerWritingTask('F', 'letter_F'));
+      timeline.push(...MatchingRetrievalTrial(half1[0]));
+      timeline.push(...MatchingRetrievalTrial(half1[1]));
+
+      timeline.push(beforeSecondEncodingInstructions);
+      timeline.push(attentionCheckNeutral);
+      
+      timeline.push(...MatchingEncodingTrial(half2[0]));
+      timeline.push(...MatchingEncodingTrial(half2[1]));
+      timeline.push(FillerWritingTask('A', 'letter_A'));
+      timeline.push(...MatchingRetrievalTrial(half2[0]));
+      timeline.push(...MatchingRetrievalTrial(half2[1]));
+
+      const prolificPID = getQueryParam('PROLIFIC_PID');
+      const studyID = getQueryParam('STUDY_ID');
+      const sessionID = getQueryParam('SESSION_ID');
+
+function countWords(text) {
+  if (!text) return 0;
+  return text.trim().split(/\s+/).length;
+}
+
+function calculateOverallAccuracy(itemReport) {
+  let totalItems = 0;
+  let correctItems = 0;
+  
+  Object.values(itemReport).forEach(setItems => {
+    setItems.forEach(item => {
+      totalItems++;
+      if (item.retrievalCorrect === 1) correctItems++;
+    });
+  });
+  
+  return totalItems > 0 ? (correctItems / totalItems) : null;
+}
+
+const endScreen = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <div style="max-width:800px;margin:0 auto;text-align:left">
+      <h3>Thank you for your participation!</h3>
+      <p>You will now be redirected back to the Prolific site.</p>
+    </div>
+  `,
+  choices: [],
+  response_ends_trial: false,
+  on_load: () => {
+      
+  const allData = jsPsych.data.get().values();
+    
+    // Collect timing data for feedback screens
+  const feedbackTimings = {
+  Set1: null,
+  Set2: null,
+  Set3: null,
+  Set4: null
+};
+
+allData.forEach(trial => {
+  if (trial.phase === 'encoding_feedback') {
+    feedbackTimings[trial.setId] = trial.feedback_rt_ms;
+  }
+});
+    
+    // Build item report
+    const itemReport = {};
+    SETS.forEach(set => {
+      const setId = set.setId;
+      itemReport[setId] = [];
+      
+      const encodingTrial = allData.find(trial => trial.setId === setId && trial.phase === 'encoding');
+      const retrievalTrial = allData.find(trial => trial.setId === setId && trial.phase === 'retrieval');
+      
+      if (encodingTrial && retrievalTrial) {
+        const groundTruth = encodingTrial.derivedGroundTruth;
+        const encodingMatches = encodingTrial.encoding_matches;
+        const retrievalMatches = retrievalTrial.participantMapping;
+        const encodingTopOrder = encodingTrial.encodingTopOrder;
+        
+        encodingTopOrder.forEach(topImage => {
+          const encodingMatch = encodingMatches.find(m => m.top_image === topImage);
+          const encodingCorrect = encodingMatch ? encodingMatch.is_correct : null;
+          const retrievalMatch = retrievalMatches[topImage];
+          const retrievalCorrect = groundTruth[topImage] === retrievalMatch ? 1 : 0;
+          
+          itemReport[setId].push({
+            topImage,
+            encodingCorrect,
+            retrievalCorrect
+          });
+        });
+      }
+    });
+    
+    // Get filler task data with word counts
+    // Get filler task data with word counts and RT in seconds only
+const fillerTasks = allData.filter(trial => trial.phase === 'filler');
+
+const fillerSummary = fillerTasks.map(task => ({
+  tag: task.fillerTag,
+  letter: task.fillerLetter,
+  wc: task.wordCount ?? countWords(task.text),
+  rt_sec: (task.rt / 1000).toFixed(2)
+}));
+
+// Pull the F and A fluency scores into separate variables for Qualtrics.
+const fTask = fillerTasks.find(task => task.fillerLetter === 'F');
+const aTask = fillerTasks.find(task => task.fillerLetter === 'A');
+const F_word_count = fTask ? (fTask.wordCount ?? countWords(fTask.text)) : 0;
+const A_word_count = aTask ? (aTask.wordCount ?? countWords(aTask.text)) : 0;
+const F_rt_sec = fTask ? (fTask.rt / 1000).toFixed(2) : '';
+const A_rt_sec = aTask ? (aTask.rt / 1000).toFixed(2) : '';
+    
+    // Get attention check results
+    const attentionChecks = allData.filter(trial => trial.phase === 'attention_check' || trial.phase === 'attention_check_neutral');
+    const attentionCorrect = attentionChecks.every(check => check.attention_correct === 1);
+    
+    // Combine all data
+    const summaryData = {
+      prolific_pid: prolificPID,
+      prolific_study_id: studyID,
+      prolific_session_id: sessionID,
+      timestamp_start: jsPsych.data.get().values()[0].timestamp || new Date().toISOString(),
+      timestamp_end: new Date().toISOString(),
+      item_report: itemReport,
+      feedback_timings: feedbackTimings,
+      filler_summary: fillerSummary,
+      attention_checks_passed: attentionCorrect,
+      overall_accuracy: calculateOverallAccuracy(itemReport)
+    };
+    
+    // Encode data for Qualtrics - pass as individual URL parameters
+    const qualtricsSurveyID = 'SV_9LlAiV46s0DUXxc';
+    const qualtricsBaseURL = 'https://merceruniversity.co1.qualtrics.com/jfe/form/';
+    const prolificCompletionCode = getQueryParam('cc') || 'NO_CODE';
+    const redirectURL = `https://app.prolific.co/submissions/complete?cc=${prolificCompletionCode}`;
+
+    // Convert data to URL parameters
+    const itemReportStr = encodeURIComponent(JSON.stringify(summaryData.item_report));
+    const fillerSummaryStr = encodeURIComponent(JSON.stringify(summaryData.filler_summary));
+    const feedback_set1 = encodeURIComponent(feedbackTimings.Set1 ?? '');
+    const feedback_set2 = encodeURIComponent(feedbackTimings.Set2 ?? '');
+    const feedback_set3 = encodeURIComponent(feedbackTimings.Set3 ?? '');
+    const feedback_set4 = encodeURIComponent(feedbackTimings.Set4 ?? '');
+    const attentionChecksStr = encodeURIComponent(summaryData.attention_checks_passed ? 'true' : 'false');
+    const overallAccuracyStr = encodeURIComponent(summaryData.overall_accuracy || '0');
+    const redirectURLEncoded = encodeURIComponent(redirectURL);
+
+    const qualtricsURL = `${qualtricsBaseURL}${qualtricsSurveyID}?` +
+      `PROLIFIC_PID=${encodeURIComponent(prolificPID)}&` +
+      `PROLIFIC_STUDY_ID=${encodeURIComponent(studyID)}&` +
+      `PROLIFIC_SESSION_ID=${encodeURIComponent(sessionID)}&` +
+      `F_word_count=${encodeURIComponent(F_word_count)}&` +
+      `A_word_count=${encodeURIComponent(A_word_count)}&` +
+      `F_rt_sec=${encodeURIComponent(F_rt_sec)}&` +
+      `A_rt_sec=${encodeURIComponent(A_rt_sec)}&` +
+      `item_report=${itemReportStr}&` +
+      `filler_summary=${fillerSummaryStr}&` +
+      `feedback_set1=${feedback_set1}&` +
+      `feedback_set2=${feedback_set2}&` +
+      `feedback_set3=${feedback_set3}&` +
+      `feedback_set4=${feedback_set4}&` +
+      `attention_checks_passed=${attentionChecksStr}&` +
+      `overall_accuracy=${overallAccuracyStr}&` +
+      `redirect_url=${redirectURLEncoded}`;
+    
+    // Redirect after a short delay
+    setTimeout(() => {
+      window.location.href = qualtricsURL;
+    }, 1000);
+  },
+  data: { phase: 'end' }
+};
+      timeline.push(endScreen);
+
+      jsPsych.data.addProperties({
+        prolific_pid: prolificPID,
+        prolific_study_id: studyID,
+        prolific_session_id: sessionID,
+        timestamp_start: new Date().toISOString()
+      });
+
+      jsPsych.run(timeline);
+    });
+  </script>
+</body>
+</html>
